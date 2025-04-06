@@ -4,13 +4,6 @@ let pageThumbnails = [];
 let currentPageOrder = [];
 let dragStartIndex = null;
 let draggedPageIndex = null;
-// Add after existing variables at the top
-let uploadProgress = 0;
-const progressBarHTML = `
-<div class="progress-container">
-    <div class="progress-fill" style="width: 0%"></div>
-    <div class="progress-text">0%</div>
-</div>`;
 
 // Initialize drag and drop
 document.addEventListener('DOMContentLoaded', () => {
@@ -37,7 +30,6 @@ async function handleFileSelect(e) {
 
     files = [...files, ...newFiles];
     updateFileList();
-    await generatePageOrderPreview();
 }
 
 function validateFiles(fileList) {
@@ -104,7 +96,6 @@ function validatePageRange(input) {
     }
     
     files[input.closest('.file-item').dataset.index].pageRanges = value;
-    generatePageOrderPreview();
     return true;
 }
 
@@ -126,29 +117,6 @@ function parsePageRanges(rangeString, maxPages) {
 }
 
 // Page Order Management
-async function generatePageOrderPreview() {
-    pageThumbnails = [];
-    let pageIndex = 1;
-
-    for (const [fileIndex, file] of files.entries()) {
-        const pages = parsePageRanges(file.pageRanges, file.pageCount);
-        for (const pageNum of pages) {
-            const thumb = await generatePageThumbnail(file, pageNum);
-            pageThumbnails.push({
-                fileIndex,
-                pageNum,
-                thumb,
-                displayOrder: pageIndex++,
-                rotation: 0
-            });
-        }
-    }
-
-    currentPageOrder = [...pageThumbnails];
-    renderPageOrder();
-    updatePageCount();
-}
-
 async function generatePageThumbnail(file, pageNum) {
     try {
         const arrayBuffer = await file.arrayBuffer();
@@ -166,34 +134,6 @@ async function generatePageThumbnail(file, pageNum) {
     } catch {
         return 'assets/page-icon.png';
     }
-}
-
-function renderPageOrder() {
-    const grid = document.getElementById('pagesGrid');
-    grid.innerHTML = currentPageOrder.map((page, index) => `
-        <div class="page-thumb" draggable="true" data-index="${index}">
-            <img src="${page.thumb}" alt="Page ${index + 1}" 
-                 style="transform: rotate(${page.rotation}deg)">
-            <div class="page-number">${index + 1}</div>
-            <div class="page-controls">
-                <button class="btn-rotate" onclick="rotatePage(this, -90)">
-                    <i class="fas fa-undo"></i>
-                </button>
-                <button class="btn-rotate" onclick="rotatePage(this, 90)">
-                    <i class="fas fa-redo"></i>
-                </button>
-            </div>
-        </div>
-    `).join('');
-
-    document.querySelectorAll('.page-thumb').forEach(thumb => {
-        thumb.addEventListener('dragstart', handlePageDragStart);
-        thumb.addEventListener('dragover', handlePageDragOver);
-        thumb.addEventListener('drop', handlePageDrop);
-        thumb.querySelector('img').addEventListener('click', () => 
-            showZoomedPage(thumb.querySelector('img').src)
-        );
-    });
 }
 
 // Drag and Drop Handlers
@@ -214,29 +154,6 @@ function initDragDrop() {
         dropZone.classList.remove('dragover');
         handleFileSelect(e);
     });
-}
-
-function handlePageDragStart(e) {
-    draggedPageIndex = +e.currentTarget.dataset.index;
-    e.currentTarget.classList.add('dragging');
-}
-
-function handlePageDragOver(e) {
-    e.preventDefault();
-}
-
-function handlePageDrop(e) {
-    e.preventDefault();
-    const dropIndex = +e.currentTarget.dataset.index;
-    swapPages(draggedPageIndex, dropIndex);
-    e.currentTarget.classList.remove('dragging');
-}
-
-function swapPages(oldIndex, newIndex) {
-    const temp = currentPageOrder[oldIndex];
-    currentPageOrder.splice(oldIndex, 1);
-    currentPageOrder.splice(newIndex, 0, temp);
-    renderPageOrder();
 }
 
 // UI Updates
@@ -324,23 +241,25 @@ async function mergeFiles() {
             const srcPdf = await PDFLib.PDFDocument.load(pdfBytes);
             const [copiedPage] = await mergedPdf.copyPages(srcPdf, [pageNum - 1]);
 
+            // Apply rotation
             if (rotation !== 0) {
                 copiedPage.setRotation(PDFLib.degrees(rotation));
             }
 
             mergedPdf.addPage(copiedPage);
+
+            // Update progress
             progressFill.style.width = `${((i + 1) / totalPages * 100)}%`;
         }
 
         // Finalize
         const mergedBytes = await mergedPdf.save();
         const blob = new Blob([mergedBytes], { type: 'application/pdf' });
-        
-        // Generate filename based on first file
-        const firstName = files[0].name.replace(/.pdf$/i, '');
+            // Get first file's name without extension
+        const firstName = files[0].name.replace(/\.pdf$/i, '');
+        // Create merged filename
         const mergedFileName = `${firstName}-merged.pdf`;
-        
-        saveAs(blob, mergedFileName);
+      saveAs(blob, mergedFileName);  // Changed this line
         showNotification('PDFs merged successfully!');
     } catch (err) {
         console.error('Merge error:', err);
@@ -351,6 +270,7 @@ async function mergeFiles() {
         progressBar.style.display = 'none';
     }
 }
+
 // Utility Functions
 function formatFileSize(bytes) {
     const units = ['Bytes', 'KB', 'MB', 'GB'];
@@ -388,18 +308,9 @@ function removeFile(index) {
 
 function clearFiles() {
     files = [];
-    pageThumbnails = [];
-    currentPageOrder = [];
     updateFileList();
-    renderPageOrder();
-    updatePageCount();
 }
 
-function resetPageOrder() {
-    currentPageOrder = [...pageThumbnails];
-    renderPageOrder();
-    updatePageCount();
-}
 
 // Rotation Handling
 function rotatePage(btn, degrees) {
